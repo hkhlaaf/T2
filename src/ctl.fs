@@ -48,6 +48,12 @@ and Path_Formula =
     | U of CTLStar_Formula * CTLStar_Formula
     | G of CTLStar_Formula
     | X of CTLStar_Formula
+    | P of CTLStar_Formula    
+    | B of CTLStar_Formula * CTLStar_Formula
+    | S of CTLStar_Formula * CTLStar_Formula
+    | H of CTLStar_Formula
+    | Y of CTLStar_Formula
+
 
 and CTLStar_Formula =
 
