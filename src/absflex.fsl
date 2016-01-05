@@ -74,12 +74,16 @@ rule token = parse
   | "START"             { START }
   | "AT"             { AT }
 
-
   | "F"	 {F}
   | "G"	 {G}
   | "X"	 {X}
   | "W"	 {W}
   |	"U"	 {U}
+  | "P"	 {P}
+  | "H"	 {H}
+  | "Y"	 {Y}
+  | "B"	 {B}
+  |	"S"	 {S}
   | "A"	 {A}
   | "E"  {E}
   | "[AF]"   {AF}

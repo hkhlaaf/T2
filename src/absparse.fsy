@@ -54,7 +54,7 @@ let normalize_var (v : string) =
 %token TO FROM CUTPOINT START
 %token AF AG AW AX EF EG EU EX
 %token A E
-%token F G X W U
+%token F G X W U P H Y B S
 
 %start program
 %start CTL_formula
@@ -206,6 +206,11 @@ Path_formula
 	| X LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.X $3}
     | W LPAREN CTLStar_formula RPAREN COMMA LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.W($3, $7) }
 	| U LPAREN CTLStar_formula RPAREN COMMA LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.U($3, $7) }
+	| P LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.F $3}
+    | H LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.G $3}
+    | Y LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.X $3}
+    | B LPAREN CTLStar_formula RPAREN COMMA LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.W($3, $7) }
+    | S LPAREN CTLStar_formula RPAREN COMMA LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.U($3, $7) }
 	| LPAREN Path_formula RPAREN { $2 }
 	;
 

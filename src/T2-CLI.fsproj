@@ -30,6 +30,8 @@
     <EnableUnmanagedDebugging>true</EnableUnmanagedDebugging>
     <Prefer32Bit>true</Prefer32Bit>
     <Tailcalls>false</Tailcalls>
+    <StartWorkingDirectory>C:\Users\Administrator\Documents\GitHub\T2\test\</StartWorkingDirectory>
+    <StartArguments>-tests</StartArguments>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
     <NoWarn>62</NoWarn>
