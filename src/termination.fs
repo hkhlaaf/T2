@@ -1330,7 +1330,7 @@ let convert_star_CTL (f:CTL.CTLStar_Formula) (e_sub1:CTL.CTL_Formula option) e_s
         | CTL.Path_Formula.W (e2,e3) -> let e_sub2 = retrieve_formula e_sub2                                         
                                         CTL.AW (e_sub1,e_sub2)
         //The reason why U isn't included is because we currently only have support for AW and not AU
-        //Technicaly AU can be expressed in AW/AG, so U when verifying LTL can be written in terms of W/G. 
+        //Technically AU can be expressed in AW/AG, so U when verifying LTL can be written in terms of W/G. 
     match f with        
     | CTL.Path e->   match_path_form e                                  
     | CTL.State e -> 
@@ -1346,7 +1346,7 @@ let convert_star_CTL (f:CTL.CTLStar_Formula) (e_sub1:CTL.CTL_Formula option) e_s
                      | CTL.Or _ ->  CTL.CTL_Or(retrieve_formula e_sub1 ,retrieve_formula e_sub2)
                      | CTL.Atm a->  CTL.Atom a  
     
-let rec starBottomUp (pars : Parameters.parameters) (p:Programs.Program) (p_dtmz:Programs.Program) nest_level propertyMap (f:CTL.CTLStar_Formula) (termination_only:bool) is_ltl  =
+let rec starBottomUp (pars : Parameters.parameters) (p:Programs.Program) (p_dtmz:Programs.Program) nest_level propertyMap (f:CTL.CTLStar_Formula) (termination_only:bool) is_ltl is_past (historyBlocks: (string * Programs.Command list * string) list ref) initBlocks =
     //You'll notice that the syntax for CTL* is disconnected from the original CTL implementation. Below however,
     //I parse the CTL* syntax and call on the CTL implementation. The same thing is done for LTL with the "morally equivalent"
     //property in CTL.
@@ -1355,16 +1355,34 @@ let rec starBottomUp (pars : Parameters.parameters) (p:Programs.Program) (p_dtmz
                     //is_ltl := true                       
                     let(e_sub1,e_sub2) =
                         match e with
-                        | CTL.Path_Formula.F e2 | CTL.Path_Formula.G e2  
-                        | CTL.Path_Formula.X e2-> (snd <|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl, None)
-                        | CTL.Path_Formula.W (e2,e3) -> (snd <|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl,
-                                                           snd <|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e3 termination_only is_ltl)                       
+                        | CTL.Path_Formula.F e2 | CTL.Path_Formula.G e2 | CTL.Path_Formula.P e2 | CTL.Path_Formula.H e2  
+                        | CTL.Path_Formula.X e2 | CTL.Path_Formula.Y e2-> (snd <|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl is_past historyBlocks initBlocks, None)
+                        | CTL.Path_Formula.W (e2,e3) | CTL.Path_Formula.B (e2,e3) -> (snd <|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl is_past historyBlocks initBlocks,
+                                                                                        snd <|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e3 termination_only is_ltl is_past historyBlocks initBlocks)                       
                     is_ltl := true
-                    //Call LTL to CTL formula conversaion
-                    let new_F : CTL.CTL_Formula = convert_star_CTL f e_sub1 e_sub2
-                    //Then call CTL bottom up on it with determinized program
-                    let ret_value = bottomUp pars p_dtmz new_F termination_only nest_level None propertyMap    
-                    (ret_value,Some(new_F))                   
+                    match e with
+                        | CTL.Path_Formula.F _ | CTL.Path_Formula.G _ | CTL.Path_Formula.X _ | CTL.Path_Formula.W (_,_)->
+                            //Call LTL to CTL formula conversaion
+                            let new_F : CTL.CTL_Formula = convert_star_CTL f e_sub1 e_sub2
+                            //Then call CTL bottom up on it with determinized program
+                            let ret_value = bottomUp pars p_dtmz new_F termination_only nest_level None propertyMap
+                            (ret_value,Some(new_F))
+                        | CTL.Path_Formula.P _ | CTL.Path_Formula.H _ | CTL.Path_Formula.Y _ | CTL.Path_Formula.B (_,_)->
+                            //Create a set of edges that would be added onto p and p_dtmz when a state formula is reached
+                            //Need two set of edges, one for initial and one for transition system
+                            //For each past connective, we add two(branchings) transitions, if a subformula precondition is true, and if it's false
+                            //For inititializing the transitions ...?
+
+
+                            //Will need to look into propertyMap and check the properties for e_sub1 and e_sub2
+                            //and use those as a determining factor 
+
+
+                            //new_F will simply be a history variable/atomic proposition
+                            //For propertyMap add that the history_var == 1 as the precondition. 
+                            //What about ret_value?
+                            (None,None)
+                  
                     //Return propertyMap                    
     | CTL.State e ->                       
                      match e with
@@ -1374,9 +1392,9 @@ let rec starBottomUp (pars : Parameters.parameters) (p:Programs.Program) (p_dtmz
                                        //such as AF AG, etc. 
                                        match e1 with
                                        | CTL.Path_Formula.F e2 | CTL.Path_Formula.G e2 
-                                       | CTL.Path_Formula.X e2 -> (snd<|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl, None)
-                                       | CTL.Path_Formula.W (e2,e3) -> (snd <| starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl,
-                                                                        snd <| starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e3 termination_only is_ltl)
+                                       | CTL.Path_Formula.X e2 -> (snd<|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl is_past historyBlocks initBlocks, None)
+                                       | CTL.Path_Formula.W (e2,e3) -> (snd <| starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl is_past historyBlocks initBlocks,
+                                                                        snd <| starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e3 termination_only is_ltl is_past historyBlocks initBlocks)
 
                                    let new_F = convert_star_CTL f e_sub1 e_sub2       
                                    let ret_value = 
@@ -1392,8 +1410,8 @@ let rec starBottomUp (pars : Parameters.parameters) (p:Programs.Program) (p_dtmz
                                    (ret_value,Some(new_F))
 
                      | CTL.And (e1,e2) 
-                     | CTL.Or (e1,e2) ->  let e_sub1 = snd<|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e1 termination_only is_ltl
-                                          let e_sub2 = snd <|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl
+                     | CTL.Or (e1,e2) ->  let e_sub1 = snd<|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e1 termination_only is_ltl is_past historyBlocks initBlocks
+                                          let e_sub2 = snd <|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl is_past historyBlocks initBlocks
                                           let new_F = convert_star_CTL f e_sub1 e_sub2
                                           let ret_value = 
                                             if (!is_ltl) then
@@ -1485,10 +1503,13 @@ let CTLStar_Prover (pars : Parameters.parameters) (p:Programs.Program) (f:CTL.CT
     //When proving Fair + CTL, we do not need to prove properties pertaining terminating paths, thus fair_term_var is utilized here as well.
     //if not(termination_only) then make_program_infinite p ; make_program_infinite p_det
     let propertyMap = SetDictionary<CTL.CTL_Formula, (int*Formula.formula)>()
-    let is_ltl = ref false           
+    let is_ltl = ref false
+    let is_past = ref false
+    let historyBlocks = ref []
+    let initBlocks = ref []            
     let (ret_value, _) = 
         try
-            starBottomUp pars p p_det -1 propertyMap f termination_only is_ltl
+            starBottomUp pars p p_det -1 propertyMap f termination_only is_ltl is_past historyBlocks initBlocks
         with
         | :? System.ArgumentException as ex -> 
             printfn "Exception! %s " (ex.Message)
