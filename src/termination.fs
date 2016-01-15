@@ -1360,6 +1360,7 @@ let rec starBottomUp (pars : Parameters.parameters) (p:Programs.Program) (p_dtmz
                         | CTL.Path_Formula.W (e2,e3) | CTL.Path_Formula.B (e2,e3) -> (snd <|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl is_past historyBlocks initBlocks,
                                                                                         snd <|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e3 termination_only is_ltl is_past historyBlocks initBlocks)                       
                     is_ltl := true
+                    
                     match e with
                         | CTL.Path_Formula.F _ | CTL.Path_Formula.G _ | CTL.Path_Formula.X _ | CTL.Path_Formula.W (_,_)->
                             //Call LTL to CTL formula conversaion
@@ -1384,30 +1385,47 @@ let rec starBottomUp (pars : Parameters.parameters) (p:Programs.Program) (p_dtmz
                             (None,None)
                   
                     //Return propertyMap                    
-    | CTL.State e ->                       
+    | CTL.State e ->  
+                     let past = false                    
                      match e with
                      | CTL.A e1 
                      | CTL.E e1 -> let (e_sub1,e_sub2) =
                                        //We verify on the second nested formula, as e1 is considered part of the CTL formula
                                        //such as AF AG, etc. 
                                        match e1 with
-                                       | CTL.Path_Formula.F e2 | CTL.Path_Formula.G e2 
-                                       | CTL.Path_Formula.X e2 -> (snd<|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl is_past historyBlocks initBlocks, None)
-                                       | CTL.Path_Formula.W (e2,e3) -> (snd <| starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl is_past historyBlocks initBlocks,
-                                                                        snd <| starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e3 termination_only is_ltl is_past historyBlocks initBlocks)
+                                       | CTL.Path_Formula.F e2 | CTL.Path_Formula.G e2 | CTL.Path_Formula.P e2 | CTL.Path_Formula.H e2 
+                                       | CTL.Path_Formula.Y e2 | CTL.Path_Formula.X e2 -> (snd<|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl is_past historyBlocks initBlocks, None)
+                                       | CTL.Path_Formula.W (e2,e3) | CTL.Path_Formula.B (e2,e3)-> (snd <| starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl is_past historyBlocks initBlocks,
+                                                                                                    snd <| starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e3 termination_only is_ltl is_past historyBlocks initBlocks)
+                                   //Now match based on future of past connective
+                                   let(ret_value,new_F) = 
+                                       match e1 with 
+                                       | CTL.Path_Formula.F _ | CTL.Path_Formula.G _ | CTL.Path_Formula.X _ 
+                                       | CTL.Path_Formula.W (_,_) ->
+                                                           let new_F = convert_star_CTL f e_sub1 e_sub2       
+                                                           let ret_value = 
+                                                                if (!is_ltl) then
+                                                                    is_ltl := false
+                                                                    let ret = bottomUp pars p_dtmz new_F termination_only nest_level None propertyMap
+                                                                    let formulaMap = propertyMap.[new_F]                                                                                   
+                                                                    propertyMap.Remove(new_F)|> ignore                                        
+                                                                    propertyMap.Union(quantify_proph_var e.IsExistential new_F formulaMap "__proph_var_det")                                         
+                                                                    ret
+                                                                else
+                                                                     bottomUp pars p new_F termination_only nest_level None propertyMap
+                                                           (ret_value,Some(new_F))
+                                        | CTL.Path_Formula.P _ | CTL.Path_Formula.H _ | CTL.Path_Formula.Y _ 
+                                        | CTL.Path_Formula.B (_,_) ->   //In thise case we modify both of the programs to include the history variables
+                                                                        //Will need to look into propertyMap and check the properties for e_sub1 and e_sub2
+                                                                        //and use those as a determining factor 
 
-                                   let new_F = convert_star_CTL f e_sub1 e_sub2       
-                                   let ret_value = 
-                                        if (!is_ltl) then
-                                            is_ltl := false
-                                            let ret = bottomUp pars p_dtmz new_F termination_only nest_level None propertyMap
-                                            let formulaMap = propertyMap.[new_F]                                                                                   
-                                            propertyMap.Remove(new_F)|> ignore                                        
-                                            propertyMap.Union(quantify_proph_var e.IsExistential new_F formulaMap "__proph_var_det")                                         
-                                            ret
-                                        else
-                                             bottomUp pars p new_F termination_only nest_level None propertyMap
-                                   (ret_value,Some(new_F))
+
+                                                                        //new_F will simply be a history variable/atomic proposition
+                                                                        //For propertyMap add that the history_var == 1 as the precondition. 
+                                                                        (None,None)
+                                        | _ ->(None,None)
+                                    //Quantify the whole program from prophecy variables
+                                   (ret_value,new_F)
 
                      | CTL.And (e1,e2) 
                      | CTL.Or (e1,e2) ->  let e_sub1 = snd<|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e1 termination_only is_ltl is_past historyBlocks initBlocks
