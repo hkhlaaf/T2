@@ -1345,6 +1345,20 @@ let convert_star_CTL (f:CTL.CTLStar_Formula) (e_sub1:CTL.CTL_Formula option) e_s
                      | CTL.And _ -> CTL.CTL_And(retrieve_formula e_sub1 ,retrieve_formula e_sub2)
                      | CTL.Or _ ->  CTL.CTL_Or(retrieve_formula e_sub1 ,retrieve_formula e_sub2)
                      | CTL.Atm a->  CTL.Atom a  
+
+let addToHistoryBlock (f:CTL.Path_Formula) e_sub1 e_sub2 nest_level (propertyMap:  SetDictionary<CTL.CTL_Formula, (int*Formula.formula)>) (historyBlocks: (string * Programs.Command list * string) list ref) initBlocks =
+
+    let historyVar : Var.var =
+        match f with
+        | CTL.Path_Formula.P _ -> ("P_" + nest_level.ToString())
+        | CTL.Path_Formula.H _ -> ("H_" + nest_level.ToString())
+        | CTL.Path_Formula.Y _ -> ("Y_" + nest_level.ToString())
+        | CTL.Path_Formula.B (_,_)-> ("B_" + nest_level.ToString())
+        | _ -> failwith "Calling history methods with a future-connectives."
+
+    //propertyMap.Add(f,(0,Formula.Ge(Term.var historyVar,Term.Const(Const.))))
+    //historyVar will be the new replaced formula.
+    historyVar
     
 let rec starBottomUp (pars : Parameters.parameters) (p:Programs.Program) (p_dtmz:Programs.Program) nest_level propertyMap (f:CTL.CTLStar_Formula) (termination_only:bool) is_ltl is_past (historyBlocks: (string * Programs.Command list * string) list ref) initBlocks =
     //You'll notice that the syntax for CTL* is disconnected from the original CTL implementation. Below however,
@@ -1418,7 +1432,7 @@ let rec starBottomUp (pars : Parameters.parameters) (p:Programs.Program) (p_dtmz
                                         | CTL.Path_Formula.B (_,_) ->   //In thise case we modify both of the programs to include the history variables
                                                                         //Will need to look into propertyMap and check the properties for e_sub1 and e_sub2
                                                                         //and use those as a determining factor 
-
+                                                                        let new_F = addToHistoryBlock e1 e_sub1 e_sub2 nest_level propertyMap historyBlocks initBlocks
 
                                                                         //new_F will simply be a history variable/atomic proposition
                                                                         //For propertyMap add that the history_var == 1 as the precondition. 
