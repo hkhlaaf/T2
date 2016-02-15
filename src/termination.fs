@@ -1376,19 +1376,29 @@ let addToHistoryBlock (f:CTL.Path_Formula) e_sub1 e_sub2 nest_level (propertyMap
         | CTL.Path_Formula.S (_,_)->  Formula.And(Formula.And(assumeFormula1,Formula.Ge(Term.var(historyVar),Term.Const(bigint.One))),assumeFormula2)
         | _ -> failwith "Calling history methods with a future-connective."
     
-    (*let instrumentHistory (prog: Programs.Program) historyVar f=
+    let instrumentHistory (prog: Programs.Program) historyVar f (preCondSet : System.Collections.Generic.Dictionary<int, (Formula.formula Set*Formula.formula Set)>)=
         for (n, (k, cmds, k')) in prog.TransitionsWithIdx do
-
+        let (satPreCond, unsatPreCond) = preCondSet.[k]
         if k = prog.Initial then
-            //if it's from the outside:
-            if not(Set.contains k cp_loop_nodes) then
-                let new_cmds = assign_rho_m1::cmds
-                p.SetTransition n (k, new_cmds, k')
-        else*)
             
+            let historyNode = prog.NewNode()
+            prog.RemoveTransition n
+            prog.AddTransition k cmds historyNode
+        else
+            let historyNode = prog.NewNode()
+            prog.RemoveTransition n
+            prog.AddTransition k cmds historyNode
+            //Now iterate over transitions in preCondSet to instrument the correct
+            //assignment of history variables
+
+            for assumptions in satPreCond do
+                let cmd = [Programs.assume (assumptions);
+                                Programs.assign historyVar (Term.Const(bigint.One))]
+                prog.AddTransition historyNode cmd k'
+                    
 
     let createPrecondSet =
-        let precondSet = SetDictionary<int, (Formula.formula Set*Formula.formula Set)>()
+        let precondSet = new System.Collections.Generic.Dictionary<int, (Formula.formula Set*Formula.formula Set)>()
         let cp_conditions1, filler = 
             match e_sub1 with
             |Some(subF) ->  match subF with
