@@ -650,16 +650,27 @@ let eliminate_redun (lst : (int * Formula.formula) list) : (int*Formula.formula)
         (x, y)
     lst |> Set.ofList |> Set.map simplify |> Set.toList
 
+//We generate a list of disjunctions of conjunctions (list of lists), then we flatten to just a list of disjunctions
+//between conjucted formulas
+let distribute xss =
+    let rec f xss rs rss =
+        match xss with
+        | (x::xs)::xss -> f xss (x::rs) (f (xs::xss) rs rss)
+        | []::_ -> rss
+        | [] -> rs::rss
+    f xss [] []
+
+//Get rid of redundant formulae to error locations by checking for entailment. TODO: Do the same for dnf_cond. 
+let precond_entail x y = x |> List.collect(fun z ->
+                                if not(Formula.entails z Formula.falsec) && z <> Formula.truec && not(Formula.entails y Formula.falsec) && y <> Formula.truec then
+                                    if Formula.entails z y then [z]
+                                    else if Formula.entails y z then [y]
+                                    else [y;z]
+                                else [y;z]) |> Set.ofList |> Set.toList
+
 /// Extracts the precondition for the current subproperty at cutpoint cp, and adds in new checkers for this subproperty between
 /// start_node_for_subproperty and ret_true_node (for cases where it holds)/ret_false_node (for cases where it does not hold)
 let add_subproperty_conditions (p : Programs.Program) conditions_per_cp cp isExistential start_node_for_subproperty ret_true_node ret_false_node =
-    let distribute xss =
-        let rec f xss rs rss =
-            match xss with
-            | (x::xs)::xss -> f xss (x::rs) (f (xs::xss) rs rss)
-            | []::_ -> rss
-            | [] -> rs::rss
-        f xss [] []
 
     //A list of lists, where the rows are conjunctions and the columns are disjunctions. This means that we want to create a DNF
     //out of CNF. The reason why we're doing this is because we cannot represent disjunction in our graph, thus we must branch with
@@ -667,17 +678,6 @@ let add_subproperty_conditions (p : Programs.Program) conditions_per_cp cp isExi
     //Note that for E we need the disjunction of the pre-conditions for a location, versus the conjunction. This is dealt
     //with in another function through flattening the formulas with the same node through disjunction. This is not done for A
     let cond = conditions_per_cp |> List.filter (fun (x,_) -> x = cp) |> List.map (fun (_,y) ->  Formula.polyhedra_dnf y |> Formula.split_disjunction)
-
-    //We generate a list of disjunctions of conjunctions (list of lists), then we flatten to just a list of disjunctions
-    //between conjucted formulas
-
-    //Get rid of redundant formulae to error locations by checking for entailment. TODO: Do the same for dnf_cond. 
-    let precond_entail x y = x |> List.collect(fun z ->
-                                    if not(Formula.entails z Formula.falsec) && z <> Formula.truec && not(Formula.entails y Formula.falsec) && y <> Formula.truec then
-                                        if Formula.entails z y then [z]
-                                        else if Formula.entails y z then [y]
-                                        else [y;z]
-                                    else [y;z]) |> Set.ofList |> Set.toList
     
     let dnf_cond = distribute cond |> List.map (fun x -> Formula.conj x) |> Set.ofList
     //Generate the equivalent for the negation:
