@@ -1356,7 +1356,7 @@ let convert_star_CTL (f:CTL.CTLStar_Formula) (e_sub1:CTL.CTL_Formula option) e_s
                      | CTL.Or _ ->  CTL.CTL_Or(retrieve_formula e_sub1 ,retrieve_formula e_sub2)
                      | CTL.Atm a->  CTL.Atom a  
     
-let addToHistoryBlock (f:CTL.Path_Formula) e_sub1 e_sub2 nest_level (propertyMap:  SetDictionary<CTL.CTL_Formula, (int*Formula.formula)>) p p_dtmz =
+let addToHistoryBlock (f:CTL.Path_Formula) e_sub1 e_sub2 nest_level (propertyMap:  SetDictionary<CTL.CTL_Formula, (int*Formula.formula)>) (p: Programs.Program) (p_dtmz: Programs.Program) =
 
     let (historyVar : Var.var) =
         match f with
@@ -1366,37 +1366,25 @@ let addToHistoryBlock (f:CTL.Path_Formula) e_sub1 e_sub2 nest_level (propertyMap
         | CTL.Path_Formula.B (_,_)->("B_" + nest_level.ToString())
         | CTL.Path_Formula.S (_,_)->("S_" + nest_level.ToString())
         | _ -> failwith "Calling history methods with a future-connective."
-  
-    let histCmd assumeFormula1 assumeFormula2 =        
+    let replacement_formula = Formula.Eq(Term.var(historyVar),Term.Const(bigint.One))
+    let replacement_CTLformula = CTL.CTL_Formula.Atom(replacement_formula)
+
+    let histCmd assumeFormula1 assumeFormula2 init =        
         match f with
-        | CTL.Path_Formula.P _ -> Formula.Or(assumeFormula1,Formula.Ge(Term.var(historyVar),Term.Const(bigint.One)))           
-        | CTL.Path_Formula.H _ -> Formula.And(assumeFormula1,Formula.Ge(Term.var(historyVar),Term.Const(bigint.One)))
-        | CTL.Path_Formula.Y _ -> Formula.Ge(Term.var(("PRIME_Y_" + nest_level.ToString())),Term.Const(bigint.One)) 
-        | CTL.Path_Formula.B (_,_)->  Formula.Or(Formula.And(assumeFormula1,Formula.Ge(Term.var(historyVar),Term.Const(bigint.One))),assumeFormula2)
-        | CTL.Path_Formula.S (_,_)->  Formula.And(Formula.And(assumeFormula1,Formula.Ge(Term.var(historyVar),Term.Const(bigint.One))),assumeFormula2)
+        | CTL.Path_Formula.P _ -> if init then assumeFormula1
+                                  else Formula.Or(assumeFormula1,Formula.Ge(Term.var(historyVar),Term.Const(bigint.One)))           
+        | CTL.Path_Formula.H _ -> if init then assumeFormula1
+                                  else Formula.And(assumeFormula1,Formula.Ge(Term.var(historyVar),Term.Const(bigint.One)))
+        | CTL.Path_Formula.Y _ -> if init then Formula.falsec
+                                  else Formula.Ge(Term.var(("PRIME_Y_" + nest_level.ToString())),Term.Const(bigint.One)) 
+        | CTL.Path_Formula.B (_,_)-> if init then Formula.Or(assumeFormula1,assumeFormula2)
+                                     else Formula.Or(Formula.And(assumeFormula1,Formula.Ge(Term.var(historyVar),Term.Const(bigint.One))),assumeFormula2)
+        | CTL.Path_Formula.S (_,_)-> if init then assumeFormula1
+                                     else Formula.And(Formula.And(assumeFormula1,Formula.Ge(Term.var(historyVar),Term.Const(bigint.One))),assumeFormula2)
         | _ -> failwith "Calling history methods with a future-connective."
     
-    let instrumentHistory (prog: Programs.Program) historyVar f (preCondSet : System.Collections.Generic.Dictionary<int, (Formula.formula Set*Formula.formula Set)>)=
-        for (n, (k, cmds, k')) in prog.TransitionsWithIdx do
-        let (satPreCond, unsatPreCond) = preCondSet.[k]
-        if k = prog.Initial then
-            
-            let historyNode = prog.NewNode()
-            prog.RemoveTransition n
-            prog.AddTransition k cmds historyNode
-        else
-            let historyNode = prog.NewNode()
-            prog.RemoveTransition n
-            prog.AddTransition k cmds historyNode
-            //Now iterate over transitions in preCondSet to instrument the correct
-            //assignment of history variables
-
-            for assumptions in satPreCond do
-                let cmd = [Programs.assume (assumptions);
-                                Programs.assign historyVar (Term.Const(bigint.One))]
-                prog.AddTransition historyNode cmd k'
-                    
-
+    let pInit = p.TransitionsFrom p.Initial |>List.map(fun (n,(k,_,k')) -> k') |> Set.ofList
+    let pdtmzInit = p_dtmz.TransitionsFrom p_dtmz.Initial |>List.map(fun (n,(k,_,k')) -> k') |> Set.ofList
     let createPrecondSet =
         let precondSet = new System.Collections.Generic.Dictionary<int, (Formula.formula Set*Formula.formula Set)>()
         let cp_conditions1, filler = 
@@ -1413,6 +1401,8 @@ let addToHistoryBlock (f:CTL.Path_Formula) e_sub1 e_sub2 nest_level (propertyMap
             |None -> System.Collections.Generic.Dictionary<int,Formula.formula>(), Formula.truec
         
         let cpList = Set.union (cp_conditions1 |> Seq.map(fun x -> x.Key) |> Set.ofSeq) (cp_conditions2 |> Seq.map(fun x -> x.Key)|>Set.ofSeq)
+        let cpList = Set.union pInit cpList
+        let cpList = Set.union pdtmzInit cpList
         for cp in cpList do      
             let cond1 = try
                             cp_conditions1 |> Seq.filter (fun x -> x.Key = cp) |> Seq.map(fun x -> x.Value) |> Seq.head
@@ -1424,17 +1414,52 @@ let addToHistoryBlock (f:CTL.Path_Formula) e_sub1 e_sub2 nest_level (propertyMap
                         with
                         | :? System.ArgumentException as ex -> 
                             filler
-            let newHistoryCond = histCmd cond1 cond2
+            let newHistoryCond = 
+                    if pInit.Contains cp || pdtmzInit.Contains cp then 
+                        histCmd cond1 cond2 true
+                    else 
+                        histCmd cond1 cond2 false
+
             let historyDnf = newHistoryCond |> Formula.polyhedra_dnf |> Formula.split_disjunction |> Set.ofList
             //Generate the equivalent for the negation:
             let negHistoryDnf = Formula.negate(newHistoryCond) |> Formula.polyhedra_dnf  |> Formula.split_disjunction |> Set.ofList
             precondSet.Add(cp,(historyDnf,negHistoryDnf))
+            propertyMap.Add(replacement_CTLformula,(cp,replacement_formula))
         precondSet
 
-    //historyVar will be the new replaced formula.
-    let replacement_formula = CTL.CTL_Formula.Atom(Formula.Eq(Term.var(historyVar),Term.Const(bigint.One)))
+    let instrumentHistory (prog: Programs.Program) historyVar f (preCondSet : System.Collections.Generic.Dictionary<int, (Formula.formula Set*Formula.formula Set)>)=
+        for (n, (k, cmds, k')) in prog.TransitionsWithIdx do
+            let (satPreCond, unsatPreCond) = preCondSet.[k']
+            let historyNode = prog.NewNode()
+            prog.RemoveTransition n
+            prog.AddTransition k cmds historyNode
+            //Now iterate over transitions in preCondSet to instrument the correct
+            let trueCmd = 
+                match f with
+                | CTL.Path_Formula.Y _ -> if k = prog.Initial then 
+                                            [Programs.assign historyVar (Term.Const(bigint.Zero)); 
+                                                Programs.assign ("PRIME_Y_" + nest_level.ToString()) (Term.Const(bigint.Zero))]
+                                          else
+                                            [Programs.assign historyVar (Term.var(("PRIME_Y_" + nest_level.ToString()))); 
+                                                Programs.assign ("PRIME_Y_" + nest_level.ToString()) (Term.Const(bigint.One))]
+                | _ -> [Programs.assign historyVar (Term.Const(bigint.One))]
+            let falseCmd =
+                match f with
+                | CTL.Path_Formula.Y _ -> [Programs.assign historyVar (Term.var(("PRIME_Y_" + nest_level.ToString())));
+                                                Programs.assign ("PRIME_Y_" + nest_level.ToString()) (Term.Const(bigint.Zero))]
+                | _ -> [Programs.assign historyVar (Term.Const(bigint.Zero))]
+            for assumptions in satPreCond do
+                let cmd = [Programs.assume (assumptions)]@ trueCmd
+                prog.AddTransition historyNode cmd k'
+            for assumptions in unsatPreCond do
+                let cmd = [Programs.assume (assumptions)]@ falseCmd
+                prog.AddTransition historyNode cmd k'
 
-    replacement_formula
+    instrumentHistory p historyVar f createPrecondSet
+    instrumentHistory p_dtmz historyVar f createPrecondSet
+
+    //historyVar will be the new replaced formula.
+    replacement_CTLformula
     
 let rec starBottomUp (pars : Parameters.parameters) (p:Programs.Program) (p_dtmz:Programs.Program) nest_level propertyMap (f:CTL.CTLStar_Formula) (termination_only:bool) is_ltl is_past  =
     //You'll notice that the syntax for CTL* is disconnected from the original CTL implementation. Below however,
