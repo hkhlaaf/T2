@@ -808,10 +808,9 @@ let instrument_G (p : Programs.Program) formula (propertyMap : SetDictionary<CTL
         if(k <> p_G.Initial && (List.contains k cp)) then
             let end_node_of_subproperty = node_to_end_of_subproperty_node_map.[k]
             //let cmd = [Programs.assume (Formula.Gt(Term.Var ret,Term.Const(bigint.Zero)))]
-            //p_G.AddTransition end_node_of_subproperty (cmd@c) k'
+            //p_G.AddTransition end_node_of_subproperty (cmd@c) k'          
             p_G.AddTransition end_node_of_subproperty c k'
             p_G.RemoveTransition n
-
     (p_G, ret, final_loc, [], Map.empty)
 
 let instrument_F (pars : Parameters.parameters) (p : Programs.Program) formula (propertyMap : SetDictionary<CTL_Formula, int * Formula.formula>) isTerminationOnly (fairness_constraint : ((Programs.Command list * Programs.Command list) * Programs.Command list list) option) findPreconds isExistential =
@@ -1220,6 +1219,7 @@ let instrument_Prop (p_orig : Programs.Program) e =
 /// the error location (this is where the rfs are later added in)
 let mergeProgramAndProperty (pars : Parameters.parameters) (p : Programs.Program) actl_prop (is_false : bool) propertyMap (fairness_constraint : (Formula.formula * Formula.formula) option) findPreconds next =
     p.RemoveUnreachableLocations()
+    
     if pars.dottify_input_pgms then
         Output.print_dot_program p "input.dot"
 

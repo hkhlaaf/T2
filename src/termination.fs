@@ -1147,14 +1147,14 @@ let rec bottomUp (pars : Parameters.parameters) (p:Programs.Program) (f:CTL.CTL_
                 bottomUp pars p e2 termination_only (nest_level+1) fairness_constraint propertyMap |> ignore
 
             //Propagate knowledge for non-atomic formulae
-            (*if not(e1.isAtomic) && e2.isAtomic then
+            if not(e1.isAtomic && e2.isAtomic) then
                 propagate_nodes p e1 propertyMap
-            else if e1.isAtomic && not(e2.isAtomic) then
+            (*else if e1.isAtomic && not(e2.isAtomic) then
                 propagate_nodes p e2 propertyMap
             else
-                if nest_level = 0 || nest_level = -1 then*)
+                if nest_level = 0 || nest_level = -1 then
             propagate_nodes p e1 propertyMap
-            propagate_nodes p e2 propertyMap
+            propagate_nodes p e2 propertyMap*)
 
             let preCond_map1 = match e1 with
                                |CTL.EF _ |CTL.EG _ |CTL.EU _ |CTL.EX _ 
@@ -1269,7 +1269,7 @@ let bottomUpProver (pars : Parameters.parameters) (p:Programs.Program) (f:CTL.CT
     Utils.timeout pars.timeout
 
     if pars.elim_temp_vars then
-        let formula_vars = CTL.CTL_Formula.freevars f
+        let formula_vars = CTL.CTL_Formula.freevars f        
         p.ConstantAssignmentPropagation formula_vars
         p.LetConvert (Analysis.liveness p formula_vars)
 
@@ -1356,17 +1356,19 @@ let convert_star_CTL (f:CTL.CTLStar_Formula) (e_sub1:CTL.CTL_Formula option) e_s
                      | CTL.Or _ ->  CTL.CTL_Or(retrieve_formula e_sub1 ,retrieve_formula e_sub2)
                      | CTL.Atm a->  CTL.Atom a  
     
-let addToHistoryBlock (f:CTL.Path_Formula) e_sub1 e_sub2 nest_level (propertyMap:  SetDictionary<CTL.CTL_Formula, (int*Formula.formula)>) (p: Programs.Program) (p_dtmz: Programs.Program) =
+let addToHistoryBlock (f:CTL.Path_Formula) e_sub1 e_sub2 nest_level (propertyMap:  SetDictionary<CTL.CTL_Formula, (int*Formula.formula)>) (p: Programs.Program) (p_dtmz: Programs.Program) (setOrigNodes: Set<int> * Set<int>) =
 
+    let (pNodes, pdetNodes) = setOrigNodes 
+    let nestNumString = (abs nest_level).ToString()
     let (historyVar : Var.var) =
         match f with
-        | CTL.Path_Formula.P _ -> ("P_" + nest_level.ToString())                
-        | CTL.Path_Formula.H _ -> ("H_" + nest_level.ToString())
-        | CTL.Path_Formula.Y _ -> ("Y_" + nest_level.ToString())
-        | CTL.Path_Formula.B (_,_)->("B_" + nest_level.ToString())
-        | CTL.Path_Formula.S (_,_)->("S_" + nest_level.ToString())
+        | CTL.Path_Formula.P _ -> ("P_" + nestNumString)                
+        | CTL.Path_Formula.H _ -> ("H_" + nestNumString)
+        | CTL.Path_Formula.Y _ -> ("Y_" + nestNumString)
+        | CTL.Path_Formula.B (_,_)->("B_" + nestNumString)
+        | CTL.Path_Formula.S (_,_)->("S_" + nestNumString)
         | _ -> failwith "Calling history methods with a future-connective."
-    let replacement_formula = Formula.Eq(Term.var(historyVar),Term.Const(bigint.One))
+    let replacement_formula = Formula.Ge(Term.var(historyVar),Term.Const(bigint.One))
     let replacement_CTLformula = CTL.CTL_Formula.Atom(replacement_formula)
 
     let histCmd assumeFormula1 assumeFormula2 init =        
@@ -1375,31 +1377,34 @@ let addToHistoryBlock (f:CTL.Path_Formula) e_sub1 e_sub2 nest_level (propertyMap
                                   else Formula.Or(assumeFormula1,Formula.Ge(Term.var(historyVar),Term.Const(bigint.One)))           
         | CTL.Path_Formula.H _ -> if init then assumeFormula1
                                   else Formula.And(assumeFormula1,Formula.Ge(Term.var(historyVar),Term.Const(bigint.One)))
-        | CTL.Path_Formula.Y _ -> if init then Formula.falsec
-                                  else Formula.Ge(Term.var(("PRIME_Y_" + nest_level.ToString())),Term.Const(bigint.One)) 
+        | CTL.Path_Formula.Y _ -> if init then Formula.truec
+                                  else assumeFormula1
+                                  //else Formula.Ge(Term.var(("PRIME_Y_" + nestNumString)),Term.Const(bigint.One)) 
         | CTL.Path_Formula.B (_,_)-> if init then Formula.Or(assumeFormula1,assumeFormula2)
                                      else Formula.Or(Formula.And(assumeFormula1,Formula.Ge(Term.var(historyVar),Term.Const(bigint.One))),assumeFormula2)
-        | CTL.Path_Formula.S (_,_)-> if init then assumeFormula1
-                                     else Formula.And(Formula.And(assumeFormula1,Formula.Ge(Term.var(historyVar),Term.Const(bigint.One))),assumeFormula2)
+        | CTL.Path_Formula.S (_,_)-> if init then assumeFormula2
+                                     else Formula.Or(Formula.And(assumeFormula1,(Formula.Ge(Term.var(historyVar),Term.Const(bigint.One)))),assumeFormula2)
         | _ -> failwith "Calling history methods with a future-connective."
     
     let pInit = p.TransitionsFrom p.Initial |>List.map(fun (n,(k,_,k')) -> k') |> Set.ofList
     let pdtmzInit = p_dtmz.TransitionsFrom p_dtmz.Initial |>List.map(fun (n,(k,_,k')) -> k') |> Set.ofList
+    
+    let cp_conditions1, filler1 = 
+        match e_sub1 with
+        |Some(subF) ->  match subF with
+                        |CTL.EF _ | CTL.EG _ | CTL.EU _ | CTL.EX _ | CTL.CTL_Or _-> fold_by_loc Formula.Or propertyMap.[subF], Formula.falsec
+                        | _ -> fold_by_loc Formula.And propertyMap.[subF], Formula.truec
+        |None -> failwith "First sub-formulae is not optional, despite the type. Something went wrong."
+    let cp_conditions2, filler2 = 
+        match e_sub2 with
+        |Some(subF) ->  match subF with
+                        |CTL.EF _ | CTL.EG _ | CTL.EU _ | CTL.EX _ | CTL.CTL_Or _-> fold_by_loc Formula.Or propertyMap.[subF], Formula.falsec
+                        | _ -> fold_by_loc Formula.And propertyMap.[subF], Formula.truec
+        |None -> System.Collections.Generic.Dictionary<int,Formula.formula>(), Formula.truec
+        
+    
     let createPrecondSet =
         let precondSet = new System.Collections.Generic.Dictionary<int, (Formula.formula Set*Formula.formula Set)>()
-        let cp_conditions1, filler = 
-            match e_sub1 with
-            |Some(subF) ->  match subF with
-                            |CTL.EF _ | CTL.EG _ | CTL.EU _ | CTL.EX _ | CTL.CTL_Or _-> fold_by_loc Formula.Or propertyMap.[subF], Formula.falsec
-                            | _ -> fold_by_loc Formula.And propertyMap.[subF], Formula.truec
-            |None -> failwith "First sub-formulae is not optional, despite the type. Something went wrong."
-        let cp_conditions2, filler = 
-            match e_sub2 with
-            |Some(subF) ->  match subF with
-                            |CTL.EF _ | CTL.EG _ | CTL.EU _ | CTL.EX _ | CTL.CTL_Or _-> fold_by_loc Formula.Or propertyMap.[subF], Formula.falsec
-                            | _ -> fold_by_loc Formula.And propertyMap.[subF], Formula.truec
-            |None -> System.Collections.Generic.Dictionary<int,Formula.formula>(), Formula.truec
-        
         let cpList = Set.union (cp_conditions1 |> Seq.map(fun x -> x.Key) |> Set.ofSeq) (cp_conditions2 |> Seq.map(fun x -> x.Key)|>Set.ofSeq)
         let cpList = Set.union pInit cpList
         let cpList = Set.union pdtmzInit cpList
@@ -1408,12 +1413,12 @@ let addToHistoryBlock (f:CTL.Path_Formula) e_sub1 e_sub2 nest_level (propertyMap
                             cp_conditions1 |> Seq.filter (fun x -> x.Key = cp) |> Seq.map(fun x -> x.Value) |> Seq.head
                         with
                         | :? System.ArgumentException as ex -> 
-                            filler
+                            filler1
             let cond2 = try
                             cp_conditions2 |> Seq.filter (fun x -> x.Key = cp) |> Seq.map(fun x -> x.Value) |> Seq.head
                         with
                         | :? System.ArgumentException as ex -> 
-                            filler
+                            filler2
             let newHistoryCond = 
                     if pInit.Contains cp || pdtmzInit.Contains cp then 
                         histCmd cond1 cond2 true
@@ -1423,72 +1428,74 @@ let addToHistoryBlock (f:CTL.Path_Formula) e_sub1 e_sub2 nest_level (propertyMap
             let historyDnf = newHistoryCond |> Formula.polyhedra_dnf |> Formula.split_disjunction |> Set.ofList
             //Generate the equivalent for the negation:
             let negHistoryDnf = Formula.negate(newHistoryCond) |> Formula.polyhedra_dnf  |> Formula.split_disjunction |> Set.ofList
-            precondSet.Add(cp,(historyDnf,negHistoryDnf))
-            propertyMap.Add(replacement_CTLformula,(cp,replacement_formula))
+            precondSet.Add(cp,(historyDnf,negHistoryDnf))           
         precondSet
 
-    let instrumentHistory (prog: Programs.Program) historyVar f (preCondSet : System.Collections.Generic.Dictionary<int, (Formula.formula Set*Formula.formula Set)>)=
+    let instrumentHistory (prog: Programs.Program) historyVar f (preCondSet : System.Collections.Generic.Dictionary<int, (Formula.formula Set*Formula.formula Set)>) origNodes=
+        prog.AddVariable historyVar
         for (n, (k, cmds, k')) in prog.TransitionsWithIdx do
-            let (satPreCond, unsatPreCond) = preCondSet.[k']
-            let historyNode = prog.NewNode()
-            prog.RemoveTransition n
-            prog.AddTransition k cmds historyNode
-            //Now iterate over transitions in preCondSet to instrument the correct
-            let trueCmd = 
-                match f with
-                | CTL.Path_Formula.Y _ -> if k = prog.Initial then 
-                                            [Programs.assign historyVar (Term.Const(bigint.Zero)); 
-                                                Programs.assign ("PRIME_Y_" + nest_level.ToString()) (Term.Const(bigint.Zero))]
-                                          else
-                                            [Programs.assign historyVar (Term.var(("PRIME_Y_" + nest_level.ToString()))); 
-                                                Programs.assign ("PRIME_Y_" + nest_level.ToString()) (Term.Const(bigint.One))]
-                | _ -> [Programs.assign historyVar (Term.Const(bigint.One))]
-            let falseCmd =
-                match f with
-                | CTL.Path_Formula.Y _ -> [Programs.assign historyVar (Term.var(("PRIME_Y_" + nest_level.ToString())));
-                                                Programs.assign ("PRIME_Y_" + nest_level.ToString()) (Term.Const(bigint.Zero))]
-                | _ -> [Programs.assign historyVar (Term.Const(bigint.Zero))]
-            for assumptions in satPreCond do
-                let cmd = [Programs.assume (assumptions)]@ trueCmd
-                prog.AddTransition historyNode cmd k'
-            for assumptions in unsatPreCond do
-                let cmd = [Programs.assume (assumptions)]@ falseCmd
-                prog.AddTransition historyNode cmd k'
+            if preCondSet.ContainsKey k' && Set.contains k' origNodes then
+                let (satPreCond, unsatPreCond) =  preCondSet.[k'] 
+                let historyNode = prog.NewNode()
+                prog.RemoveTransition n
+                prog.AddTransition k cmds historyNode
+                //Now iterate over transitions in preCondSet to instrument the correct
+                let trueCmd = 
+                    match f with
+                    | CTL.Path_Formula.Y _ -> if k = prog.Initial then 
+                                                [Programs.assign historyVar (Term.Const(bigint.Zero)); 
+                                                    Programs.assign ("PRIME_Y_" + nestNumString) (Term.Const(bigint.Zero))]
+                                              else
+                                                [Programs.assign historyVar (Term.var(("PRIME_Y_" + nestNumString))); 
+                                                    Programs.assign ("PRIME_Y_" + nestNumString) (Term.Const(bigint.One))]
+                    | _ -> [Programs.assign historyVar (Term.Const(bigint.One))]
+                let falseCmd =
+                    match f with
+                    | CTL.Path_Formula.Y _ -> [Programs.assign historyVar (Term.var(("PRIME_Y_" + nestNumString)));
+                                                    Programs.assign ("PRIME_Y_" + nestNumString) (Term.Const(bigint.Zero))]
+                    | _ -> [Programs.assign historyVar (Term.Const(bigint.Zero))]
+                for assumptions in satPreCond do
+                    let cmd = [Programs.assume (assumptions)]@ trueCmd
+                    prog.AddTransition historyNode cmd k'
+                for assumptions in unsatPreCond do
+                    let cmd = [Programs.assume (assumptions)]@ falseCmd
+                    prog.AddTransition historyNode cmd k'
+            if Set.contains k' origNodes then
+                propertyMap.Add(replacement_CTLformula,(k',replacement_formula))
 
-    instrumentHistory p historyVar f createPrecondSet
-    instrumentHistory p_dtmz historyVar f createPrecondSet
+    instrumentHistory p historyVar f createPrecondSet pNodes
+    instrumentHistory p_dtmz historyVar f createPrecondSet pdetNodes
 
     //historyVar will be the new replaced formula.
     replacement_CTLformula
     
-let rec starBottomUp (pars : Parameters.parameters) (p:Programs.Program) (p_dtmz:Programs.Program) nest_level propertyMap (f:CTL.CTLStar_Formula) (termination_only:bool) is_ltl is_past  =
+let rec starBottomUp (pars : Parameters.parameters) (p:Programs.Program) (p_dtmz:Programs.Program) setOrigNodes nest_level propertyMap (f:CTL.CTLStar_Formula) (termination_only:bool) is_ltl is_past  =
     //You'll notice that the syntax for CTL* is disconnected from the original CTL implementation. Below however,
     //I parse the CTL* syntax and call on the CTL implementation. The same thing is done for LTL with the "morally equivalent"
     //property in CTL.
     match f with        
-    | CTL.Path e->  
-                    //is_ltl := true                       
+    | CTL.Path e->                         
                     let(e_sub1,e_sub2) =
                         match e with
                         | CTL.Path_Formula.F e2 | CTL.Path_Formula.G e2 | CTL.Path_Formula.P e2 | CTL.Path_Formula.H e2  
-                        | CTL.Path_Formula.X e2 | CTL.Path_Formula.Y e2-> (snd <|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl is_past , None)
-                        | CTL.Path_Formula.W (e2,e3) | CTL.Path_Formula.B (e2,e3) | CTL.Path_Formula.S (e2,e3) -> (snd <|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl is_past ,
-                                                                                                                     snd <|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e3 termination_only is_ltl is_past )                       
-                    is_ltl := true
-                    
+                        | CTL.Path_Formula.X e2 | CTL.Path_Formula.Y e2 -> (snd <|starBottomUp pars p p_dtmz setOrigNodes (nest_level - 1) propertyMap e2 termination_only is_ltl is_past , None)
+                        | CTL.Path_Formula.W (e2,e3) | CTL.Path_Formula.B (e2,e3) | CTL.Path_Formula.S (e2,e3) -> (snd <|starBottomUp pars p p_dtmz setOrigNodes (nest_level - 1) propertyMap e2 termination_only is_ltl is_past ,
+                                                                                                                     snd <|starBottomUp pars p p_dtmz setOrigNodes (nest_level - 1) propertyMap e3 termination_only is_ltl is_past )
+                        | CTL.Path_Formula.U (e2, e3) -> failwith " We currently only have support for AW and not AU. AU can be expressed in AW/AG, so U when verifying LTL can be written in terms of W/G. Please reformat the formula being verified."                                                                                                                                   
                     match e with
                         | CTL.Path_Formula.F _ | CTL.Path_Formula.G _ | CTL.Path_Formula.X _ | CTL.Path_Formula.W (_,_)->
                             //Call LTL to CTL formula conversaion
                             let new_F : CTL.CTL_Formula = convert_star_CTL f e_sub1 e_sub2
                             //Then call CTL bottom up on it with determinized program
-                            let ret_value = bottomUp pars p_dtmz new_F termination_only nest_level None propertyMap    
+                            let ret_value = bottomUp pars p_dtmz new_F termination_only nest_level None propertyMap 
+                            is_ltl := true   
                             (ret_value,Some(new_F))                   
-                        | CTL.Path_Formula.P _ | CTL.Path_Formula.H _ | CTL.Path_Formula.Y _ | CTL.Path_Formula.B (_,_)->
+                        | CTL.Path_Formula.P _ | CTL.Path_Formula.H _ | CTL.Path_Formula.Y _ | CTL.Path_Formula.B (_,_) | CTL.Path_Formula.S (_,_)->
                             ///When it's the outer formula we need to consider ret_value
                             //new_F will simply be a history variable/atomic proposition
                             //For propertyMap add that the history_var == 1 as the precondition. 
                             //What about ret_value?
-                            let new_F = addToHistoryBlock e e_sub1 e_sub2 nest_level propertyMap p p_dtmz
+                            let new_F = addToHistoryBlock e e_sub1 e_sub2 nest_level propertyMap p p_dtmz setOrigNodes 
                             (None,Some(new_F))
                   
                     //Return propertyMap                    
@@ -1501,9 +1508,9 @@ let rec starBottomUp (pars : Parameters.parameters) (p:Programs.Program) (p_dtmz
                                        //such as AF AG, etc. 
                                        match e1 with
                                        | CTL.Path_Formula.F e2 | CTL.Path_Formula.G e2 | CTL.Path_Formula.P e2 | CTL.Path_Formula.H e2 
-                                       | CTL.Path_Formula.Y e2 | CTL.Path_Formula.X e2 -> (snd<|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl is_past , None)
-                                       | CTL.Path_Formula.W (e2,e3) | CTL.Path_Formula.B (e2,e3)| CTL.Path_Formula.S (e2,e3)-> (snd <| starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl is_past ,
-                                                                                                                                snd <| starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e3 termination_only is_ltl is_past )
+                                       | CTL.Path_Formula.Y e2 | CTL.Path_Formula.X e2 -> (snd<|starBottomUp pars p p_dtmz setOrigNodes (nest_level - 1) propertyMap e2 termination_only is_ltl is_past , None)
+                                       | CTL.Path_Formula.W (e2,e3) | CTL.Path_Formula.B (e2,e3)| CTL.Path_Formula.S (e2,e3)-> (snd <| starBottomUp pars p p_dtmz setOrigNodes (nest_level - 1) propertyMap e2 termination_only is_ltl is_past ,
+                                                                                                                                snd <| starBottomUp pars p p_dtmz setOrigNodes (nest_level - 1) propertyMap e3 termination_only is_ltl is_past )
                                    //Now match based on future of past connective
                                    let(ret_value,new_F) = 
                                        match e1 with 
@@ -1523,20 +1530,16 @@ let rec starBottomUp (pars : Parameters.parameters) (p:Programs.Program) (p_dtmz
                                    
                                                     (ret_value,Some(new_F))
                                         | CTL.Path_Formula.P _ | CTL.Path_Formula.H _ | CTL.Path_Formula.Y _ 
-                                        | CTL.Path_Formula.B (_,_) | CTL.Path_Formula.S (_,_)->   //In thise case we modify both of the programs to include the history variables
-                                                                        //Will need to look into propertyMap and check the properties for e_sub1 and e_sub2
-                                                                        //and use those as a determining factor
-                                                                        //new_F will simply be a history variable/atomic proposition
-                                                                        //For propertyMap the history_var == 1 was added as the precondition.  
-                                                                        let new_F = addToHistoryBlock e1 e_sub1 e_sub2 nest_level propertyMap p p_dtmz
+                                        | CTL.Path_Formula.B (_,_) | CTL.Path_Formula.S (_,_)-> 
+                                                                        let new_F = addToHistoryBlock e1 e_sub1 e_sub2 nest_level propertyMap p p_dtmz setOrigNodes 
                                                                         (None,Some(new_F))
                                         | _ ->(None,None)
                                     //Quantify the whole program from prophecy variables
                                    (ret_value,new_F)
 
                      | CTL.And (e1,e2) 
-                     | CTL.Or (e1,e2) ->  let e_sub1 = snd<|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e1 termination_only is_ltl is_past 
-                                          let e_sub2 = snd <|starBottomUp pars p p_dtmz (nest_level - 1) propertyMap e2 termination_only is_ltl is_past 
+                     | CTL.Or (e1,e2) ->  let e_sub1 = snd<|starBottomUp pars p p_dtmz setOrigNodes (nest_level - 1) propertyMap e1 termination_only is_ltl is_past 
+                                          let e_sub2 = snd <|starBottomUp pars p p_dtmz setOrigNodes (nest_level - 1) propertyMap e2 termination_only is_ltl is_past 
                                           let new_F = convert_star_CTL f e_sub1 e_sub2
                                           let ret_value = 
                                             if (!is_ltl) then
@@ -1641,10 +1644,11 @@ let CTLStar_Prover (pars : Parameters.parameters) (p:Programs.Program) (f:CTL.CT
     //if not(termination_only) then make_program_infinite p ; make_program_infinite p_det
     let propertyMap = SetDictionary<CTL.CTL_Formula, (int*Formula.formula)>()
     let is_ltl = ref false           
-    let is_past = ref false         
+    let is_past = ref false
+    let setOrigNodes = (p.Locations, p_det.Locations)         
     let (ret_value, _) = 
         try
-            starBottomUp pars p p_det -1 propertyMap f termination_only is_ltl is_past 
+            starBottomUp pars p p_det setOrigNodes -1 propertyMap f termination_only is_ltl is_past 
         with
         | :? System.ArgumentException as ex -> 
             printfn "Exception! %s " (ex.Message)

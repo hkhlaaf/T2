@@ -206,11 +206,11 @@ Path_formula
 	| X LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.X $3}
     | W LPAREN CTLStar_formula RPAREN COMMA LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.W($3, $7) }
 	| U LPAREN CTLStar_formula RPAREN COMMA LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.U($3, $7) }
-	| P LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.F $3}
-    | H LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.G $3}
-    | Y LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.X $3}
-    | B LPAREN CTLStar_formula RPAREN COMMA LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.W($3, $7) }
-    | S LPAREN CTLStar_formula RPAREN COMMA LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.U($3, $7) }
+	| P LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.P $3}
+    | H LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.H $3}
+    | Y LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.Y $3}
+    | B LPAREN CTLStar_formula RPAREN COMMA LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.B($3, $7) }
+    | S LPAREN CTLStar_formula RPAREN COMMA LPAREN CTLStar_formula RPAREN { CTL.Path_Formula.S($3, $7) }
 	| LPAREN Path_formula RPAREN { $2 }
 	;
 
