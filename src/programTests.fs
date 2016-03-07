@@ -157,7 +157,7 @@ let register_tests (pars : Parameters.parameters) =
 
 
     // Small, manually crafted examples ---------------------------------------------------
-    (*register_term_test "testsuite/small01.t2"
+    register_term_test "testsuite/small01.t2"
     register_safety_test "testsuite/small02.t2"
     register_safety_test "testsuite/small03.t2"
     register_safety_test "testsuite/small04.t2"
@@ -282,7 +282,7 @@ let register_tests (pars : Parameters.parameters) =
         register_term_test "testsuite/polyrank6.t2"
 
     //Regression tests for reported bugs in (non)termination:
-    register_term_test "regression/Stockholm_true-termination.t2"*)
+    register_term_test "regression/Stockholm_true-termination.t2"
 
     //Heidy's basic Temporal Properties examples, some termination
     (*register_CTL_SAT_test   "testsuite/heidy1.t2" "[AG] (x_1 >= y_1)" None
@@ -311,7 +311,7 @@ let register_tests (pars : Parameters.parameters) =
     register_CTL_SAT_test   "ax_test.t2" "[EX](p <= 0)" None*)
 
     /////////////////////////////////////////////////////////////////////////////////////////////
-    (*register_CTL_SAT_test "bakery.t2" "[AG](NONCRITICAL <= 0 || ([AF](CRITICAL > 0)))" (Some "(P == 1, Q == 1)")
+    register_CTL_SAT_test "bakery.t2" "[AG](NONCRITICAL <= 0 || ([AF](CRITICAL > 0)))" (Some "(P == 1, Q == 1)")
     register_CTL_UNSAT_test "bakerybug.t2" "[AG](NONCRITICAL <= 0 || ([AF](CRITICAL > 0)))" (Some "(P == 1, Q == 1)")
     register_CTL_SAT_test "ppblock.t2" "[AG](PPBlockInits <= 0 || ([AF](PPBunlockInits > 0)))" (Some "(IoCreateDevice == 1, status == 1)")   
     register_CTL_FAIL_test "ppblockbug.t2" "[AG](PPBlockInits <= 0 || ([AF](PPBunlockInits > 0)))" (Some "(IoCreateDevice == 1, status == 1)")
@@ -344,10 +344,11 @@ let register_tests (pars : Parameters.parameters) =
     register_CTL_SAT_test "cav13-ctl-examples/P25.t2" "(varC <= 5) || ([AF](varR > 5))" None
     register_CTL_UNSAT_test "cav13-ctl-examples/P26.t2" "(varC > 5) && [EG](varR <= 5)" None
     register_CTL_UNSAT_test "cav13-ctl-examples/P27.t2" "(varC <= 5) || [EF](varR > 5)" None
-    register_CTL_UNSAT_test "cav13-ctl-examples/P28.t2" "(varC > 5) && [AG](varR <= 5)" None*)
+    register_CTL_UNSAT_test "cav13-ctl-examples/P28.t2" "(varC > 5) && [AG](varR <= 5)" None
 
     register_CTLStar_SAT_test "past.t2" "A G(InsertTailList == 0 || Y (S (InsertTailList == 0),(IoMarkIrpPending == 1)))"
     register_CTLStar_SAT_test "past.t2" "((A (W (InsertTailList == 0), (IoMarkIrpPending == 1))) && (A G( (InsertTailList == 0) || (A X( W (InsertTailList == 0), (IoMarkIrpPending == 1))))))"
+    register_CTLStar_SAT_test "past.t2" "A G(InsertTailList == 0 || ( P(KeAcquireSpinLock == 1) && A F(KeReleaseSpinLock == 1)))"
 
     //Timeouts for CTL* are commented out. If known why a comment is left above.
     register_CTLStar_UNSAT_test "1394complete-succeed-2.t2" "A G((E G(phi_io_compl <= 0)) || (E F(G (phi_nSUC_ret > 0))))"
