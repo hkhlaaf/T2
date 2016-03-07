@@ -1,0 +1,75 @@
+START: 0;
+
+FROM: 0;
+STATUS_CANCELLED := 0;
+STATUS_PENDING := 1;
+oldCancelRoutine := nondet();
+oldIrql := nondet();
+status := nondet();
+KeAcquireSpinLock := 0;
+KeReleaseSpinLock := 0;
+IoMarkIrpPending := 0;
+InsertTailList := 0;
+oldCancelRoutine := 0;
+IoSetCancelRoutine := nondet();
+IoCompleteRequest := 0;
+RemoveEntryList := 0;
+Irp := nondet();
+TO: 1;
+
+FROM: 1;
+KeAcquireSpinLock := 1;
+TO: 2;
+
+FROM: 2;
+KeAcquireSpinLock := 0;
+IoMarkIrpPending := 1;
+TO: 3;
+
+FROM: 3;
+IoMarkIrpPending := 0;
+InsertTailList := 1;
+TO: 4;
+
+FROM: 4;
+InsertTailList := 0;
+oldCancelRoutine := IoSetCancelRoutine;
+Irp := nondet();
+TO: 5;
+
+FROM: 5;
+assume(Irp >= 0);
+IoSetCancelRoutine := nondet();
+TO: 6;
+
+FROM: 6;
+oldCancelRoutine := IoSetCancelRoutine;
+TO: 8;
+
+FROM: 8;
+assume(oldCancelRoutine >= 0);
+TO: 9;
+
+FROM: 9;
+RemoveEntryList := 1;
+TO: 10;
+
+FROM: 10;
+RemoveEntryList := 0;
+KeReleaseSpinLock := 1;
+Irp := STATUS_CANCELLED;
+IoCompleteRequest := 1;
+TO: 11;
+
+FROM: 11;
+KeReleaseSpinLock := 0;
+IoCompleteRequest := 0;
+TO: 7;
+
+FROM: 8;
+assume(oldCancelRoutine < 0);
+TO: 7;
+
+FROM: 5;
+assume(Irp < 0);
+TO: 7;
